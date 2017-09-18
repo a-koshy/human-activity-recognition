@@ -1,0 +1,99 @@
+---
+title: "Human Activity Recognition with Machine Learning"
+author: "Aranya Koshy"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+It is increasingly easy to collect large amounts of data about personal activity with devices like Nike FuelBand and Fitbit. But while people regularly record how much of an activity they do, they rarely quantify how well they do it. In this dataset, 6 participants wore accelerometers while performing barbell lifts correctly and incorrectly in 5 ways. This project uses that data to predict the manner in which they performed the task. 
+
+The data comes from here: <http://groupware.les.inf.puc-rio.br/har>. More information is available from the website (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Reproducibility
+
+We will load the libraries we need for this analysis, and set the seed.
+```{r libraries, message = FALSE}
+library(dplyr)
+library(caret)
+library(randomForest)
+library(rpart)
+library(e1071)
+
+set.seed(1959)
+```
+
+
+## Getting and cleaning the data
+
+```{r reading data, cache=TRUE}
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+
+dim(training)
+```
+
+We begin by partitioning the training dataset into training and validation sets.
+
+```{r data partition}
+inTrain = createDataPartition(training$classe, p = 0.6)[[1]]
+train <- training[inTrain, ]
+val <- training[-inTrain, ]
+```
+
+We will remove variables that have a large number of missing values, have near zero variance, or are not predictor variables (like timestamps, user names etc). We will perform exactly the same cleaning procedure on the validation and test sets.
+
+```{r cleaning data}
+notpredictors <- c(colnames(training)[grep("timestamp", colnames(training))], 
+                   "X", "user_name", "num_window",
+                   nearZeroVar(training, names = TRUE),
+                   colnames(training)[colSums(is.na(training))>0])
+
+train <- train[,!(colnames(train) %in% notpredictors)]
+
+val <- val[, !(colnames(val) %in% notpredictors)]
+testing <- testing[, !(colnames(testing) %in% notpredictors)]
+
+dim(train)
+```
+
+Now that we have `r ncol(train)` variables left in the clean dataset, we can continue to fit models.
+
+
+## Fitting models
+
+We will compare three different models: a decision tree, a random forest, and a SVM model.
+
+### Decision Tree model
+```{r rpart model}
+model_rpart <- rpart(formula = classe ~ ., data = train)
+confusionMatrix(predict(model_rpart, val, type = "class"), val$classe)
+```
+
+### Random Forest model
+```{r random forest model}
+model_rf <- randomForest(classe ~ ., data = train)
+confusionMatrix(predict(model_rf, val, type = "class"), val$classe)
+```
+
+### Support Vector Machine model
+```{r svm model}
+model_svm <- svm(classe ~ ., data = train)
+confusionMatrix(predict(model_svm, val), val$classe)
+```
+
+Out of the three models, the random forest gives the best predictions, with an out-of-sample error rate (1 - validation set accuracy) of `r (1-0.9944)`. We will use this model to create predictions for the testing set.
+
+
+## Making predictions
+
+We can finally make predictions for the testing set.
+
+```{r predictions}
+predict(model_rf, testing)
+```
